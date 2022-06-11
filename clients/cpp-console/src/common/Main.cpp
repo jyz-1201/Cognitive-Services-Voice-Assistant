@@ -124,6 +124,12 @@ void HandleKeystrokeOptions(DialogManager& dialogManager, string keystroke)
         {
             dialogManager.StopKws();
         }
+        if (keystroke == "6")
+        {
+            string input;
+            getline(cin, input, '#');
+            dialogManager.sendTextMsg(input);
+        }
         DisplayKeystrokeOptions(dialogManager);
     }
 }

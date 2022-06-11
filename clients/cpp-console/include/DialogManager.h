@@ -61,7 +61,8 @@ public:
     void ListenFromFile();
     // Get mute state of the default microphone.
     bool IsMuted() { return _muter ? _muter->IsMuted() : false; };
-
+    // Send text message to the bot
+    void sendTextMsg(string user_text);
 private:
     bool _volumeOn = false;
     bool _bargeInSupported = false;
