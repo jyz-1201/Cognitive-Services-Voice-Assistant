@@ -182,7 +182,6 @@ void DialogManager::AttachHandlers()
 		string msg;
 		if (activity.contains("text"))
 		{
-			log_t("activity[\"text\"]: ", activity["text"].get<string>());
 			msg = activity["text"].get<string>();
 		}
 
@@ -240,17 +239,14 @@ void DialogManager::AttachHandlers()
 
 		if (continue_multiturn)
 		{
-			//cout << "player state::" << int(_player->GetState()) << endl;
 			log_t("Activity requested a continuation (ExpectingInput) -- listening again");
 			// There may be an issue where the listening times out while the Audio is playing.
 			while (_player->GetState() != AudioPlayer::AudioPlayerState::PAUSED)
 			{
 				std::this_thread::sleep_for(std::chrono::milliseconds(30));
-				//cout << "SLEEPING" << endl;
 			}
 			if (msg.find("[msg2client]") == std::string::npos)
 			{
-
 				ContinueListening();
 			}
 				
@@ -262,6 +258,18 @@ void DialogManager::AttachHandlers()
 				ResumeKws();
 			}
 		}
+		if (!msg.empty())
+		{
+			if (msg.find("[Timer]") != std::string::npos)
+			{
+				while (_player->GetState() != AudioPlayer::AudioPlayerState::PAUSED)
+				{
+					std::this_thread::sleep_for(std::chrono::milliseconds(30));
+				}
+			}
+			log_t("activity[\"text\"]: ", msg);
+		}
+
 	};
 }
 
@@ -299,11 +307,12 @@ void DialogManager::sendTextMsg(string user_text)
 	while (_player->GetState() != AudioPlayer::AudioPlayerState::PAUSED)
 	{
 		std::this_thread::sleep_for(std::chrono::milliseconds(30));
-		//cout << "SLEEPING" << endl;
 	}
+
 	auto st = user_text.find("[msg2bot]");
 	user_text = user_text.substr(st);
 	log_t("DIRECT LINE SENDING TO BOT: " + user_text.substr(st));
+
 	string to_send = "{\"type\":\"message\",\"id\":null,\"timestamp\":null,\"localTimestamp\":null,\
 \"localTimezone\":null,\"serviceUrl\":null,\"channelId\":null,\"from\":null,\"conversation\":null,\
 \"recipient\":null,\"textFormat\":null,\"attachmentLayout\":null,\"membersAdded\":null,\
