@@ -2,7 +2,7 @@
   "KeywordRecognitionModel": "../../../../keyword-models/computer.table",
   "Keyword": "Computer",
   "SpeechSubscriptionKey": "25465d871acd470f9efa1d91402a87af",
-  "SpeechRegion": "westus",
+  "SpeechRegion": "westus2",
   "SRLanguage": "en-us",
   "Volume": "25",
   "CustomCommandsAppId": "",
@@ -12,4 +12,5 @@
   "CustomMicConfigPath": "../../configs/micConfig.json",
   "LinuxCaptureDeviceName": "hw:1,0"
 }
-  //Ω≠”Í‘Û£∫f470137ff3714d1cacff8605095c20f0 ≥¬Ï«£∫e3bac7e6307a4f34a0eea4db2788e13c
+//Ω≠”Í‘Û£∫f470137ff3714d1cacff8605095c20f0 25465d871acd470f9efa1d91402a87af
+//≥¬Ï«£∫e3bac7e6307a4f34a0eea4db2788e13c

@@ -123,6 +123,32 @@ void DialogManager::AttachHandlers()
 	_dialogServiceConnector->SessionStopped += [&](const SessionEventArgs& event)
 	{
 		printf("SESSION STOPPED: %s ...\n", event.SessionId.c_str());
+		SetDeviceStatus(DeviceStatus::Idle);
+		bool continue_listen = false;
+		if (to_send.size() > 0 || to_play.size() > 0)
+		{
+			SetDeviceStatus(DeviceStatus::Idle);
+
+			log_t("JYZZZZZZ: playALLBufferedAudio");
+			while (!to_play.empty())
+			{
+				auto e = to_play.back();
+				continue_listen |= playBufferedAudio(e);
+				to_play.pop_back();
+			}
+			log_t("JYZZZZZZ: sendALLTextMsg");
+			while (!to_send.empty())
+			{
+				auto e = to_send.back();
+				sendTextMsg(e);
+				to_send.pop_back();
+			}
+
+			if (continue_listen)
+			{
+				ContinueListening();
+			}
+		}
 	};
 
 	// Signal for events containing intermediate recognition results.
@@ -152,7 +178,33 @@ void DialogManager::AttachHandlers()
 		default:
 			newStatus = DeviceStatus::Idle;
 		}
+		log_t("JYZZZZZZ: newStatus=" + to_string(int(newStatus)));
+		bool continue_listen = false;
+		if (to_send.size() > 0 || to_play.size() > 0)
+		{
+			SetDeviceStatus(DeviceStatus::Idle);
 
+			log_t("JYZZZZZZ: playALLBufferedAudio");
+			while (!to_play.empty())
+			{
+				auto e = to_play.back();
+				to_play.pop_back();
+				continue_listen |= playBufferedAudio(e);
+			}
+			log_t("JYZZZZZZ: sendALLTextMsg");
+			while (!to_send.empty())
+			{
+				auto e = to_send.back();
+				to_send.pop_back();
+				sendTextMsg(e);
+			}
+
+			if (continue_listen)
+			{
+				ContinueListening();
+			}
+			
+		}
 		//update the device status
 		SetDeviceStatus(newStatus);
 	};
@@ -160,7 +212,6 @@ void DialogManager::AttachHandlers()
 	// Signal for events relating to the cancellation of an interaction. The event indicates if the reason is a direct cancellation or an error.
 	_dialogServiceConnector->Canceled += [&](const SpeechRecognitionCanceledEventArgs& event)
 	{
-
 		printf("CANCELED: Reason=%d\n", (int)event.Reason);
 		SetDeviceStatus(DeviceStatus::Idle);
 		if (event.Reason == CancellationReason::Error)
@@ -179,10 +230,19 @@ void DialogManager::AttachHandlers()
 		// Let's log the type and whether we have audio. Note this is how you access a property in the json. Here we are
 		// reading the "type" value and defaulting to "" if it doesn't exist.
 		log_t("ActivityReceived, type=", activity.value("type", ""), ", audio=", event.HasAudio() ? "true" : "false");
+
 		string msg;
 		if (activity.contains("text"))
 		{
 			msg = activity["text"].get<string>();
+			log_t("activity[\"text\"]: ", msg);
+		}
+
+		if (GetDeviceStatus() == DeviceStatus::Listening || GetDeviceStatus() == DeviceStatus::Detecting)
+		{
+			log_t("PUSH an AUDIO into buffer");
+			to_play.push_back(event);
+			return;
 		}
 
 		auto continue_multiturn = activity.value<string>("inputHint", "") == "expectingInput";
@@ -243,7 +303,7 @@ void DialogManager::AttachHandlers()
 			// There may be an issue where the listening times out while the Audio is playing.
 			while (_player->GetState() != AudioPlayer::AudioPlayerState::PAUSED)
 			{
-				std::this_thread::sleep_for(std::chrono::milliseconds(30));
+				std::this_thread::sleep_for(std::chrono::milliseconds(20));
 			}
 			if (msg.find("[msg2client]") == std::string::npos)
 			{
@@ -258,17 +318,17 @@ void DialogManager::AttachHandlers()
 				ResumeKws();
 			}
 		}
-		if (!msg.empty())
-		{
-			if (msg.find("[Timer]") != std::string::npos)
-			{
-				while (_player->GetState() != AudioPlayer::AudioPlayerState::PAUSED)
-				{
-					std::this_thread::sleep_for(std::chrono::milliseconds(30));
-				}
-			}
-			log_t("activity[\"text\"]: ", msg);
-		}
+		//if (!msg.empty())
+		//{
+		//	if (msg.find("[Timer]") != std::string::npos)
+		//	{
+		//		while (_player->GetState() != AudioPlayer::AudioPlayerState::PAUSED)
+		//		{
+		//			std::this_thread::sleep_for(std::chrono::milliseconds(30));
+		//		}
+		//	}
+		//	
+		//}
 
 	};
 }
@@ -302,11 +362,128 @@ void DialogManager::StartListening()
 	ContinueListening();
 }
 
+
+bool DialogManager::playBufferedAudio(const ActivityReceivedEventArgs& event)
+{
+	bool res = false;
+
+	auto activity = nlohmann::json::parse(event.GetActivity());
+
+	// Let's log the type and whether we have audio. Note this is how you access a property in the json. Here we are
+	// reading the "type" value and defaulting to "" if it doesn't exist.
+	log_t("ActivityReceived, type=", activity.value("type", ""), ", audio=", event.HasAudio() ? "true" : "false");
+	string msg;
+	if (activity.contains("text"))
+	{
+		msg = activity["text"].get<string>();
+		if (msg.find("[msg2client]") != std::string::npos)
+		{
+			log_t("PLAYING BACK AUDIO: ", msg.substr(12));
+		}
+		else
+			log_t("PLAYING BACK AUDIO: ", msg);
+	}
+
+	auto continue_multiturn = activity.value<string>("inputHint", "") == "expectingInput";
+	//continue_multiturn = false;
+	if (event.HasAudio())
+	{
+		log_t("Activity has audio, playing asynchronously.");
+
+		if (!_bargeInSupported)
+		{
+			log_t("Pausing KWS during TTS playback");
+			PauseKws();
+		}
+
+		auto audio = event.GetAudio();
+		int play_result = 0;
+
+		uint32_t total_bytes_read = 0;
+		if (_volumeOn && _player != nullptr)
+		{
+
+			// If we are expecting more input and have audio to play, we will want to wait till all audio is done playing before
+			// before listening again. We can read from the stream here to accomplish this.
+			if (continue_multiturn)
+			{
+				uint32_t playBufferSize = 1024;
+				unsigned int bytesRead = 0;
+				std::unique_ptr<unsigned char[]> playBuffer = std::make_unique<unsigned char[]>(playBufferSize);
+				do
+				{
+					bytesRead = audio->Read(playBuffer.get(), playBufferSize);
+					_player->Play(playBuffer.get(), bytesRead);
+					total_bytes_read += bytesRead;
+				} while (bytesRead > 0);
+
+				SetDeviceStatus(DeviceStatus::Speaking);
+
+				// We don't want to timeout while tts is playing so start 1 second before it is done
+				int secondsOfAudio = total_bytes_read / 32000;
+				std::this_thread::sleep_for(std::chrono::milliseconds((secondsOfAudio - 1) * 1000));
+			}
+			else
+			{
+				std::shared_ptr<IAudioPlayerStream> playerStream = std::make_shared<AudioPlayerStreamImpl>(audio);
+				play_result = _player->Play(playerStream);
+			}
+		}
+
+		if (!continue_multiturn)
+		{
+			SetDeviceStatus(DeviceStatus::Idle);
+		}
+	}
+
+	if (continue_multiturn)
+	{
+		log_t("Activity requested a continuation (ExpectingInput) -- listening again");
+		// There may be an issue where the listening times out while the Audio is playing.
+		while (_player->GetState() != AudioPlayer::AudioPlayerState::PAUSED)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(20));
+		}
+		if (msg.find("[msg2client]") == std::string::npos)
+		{
+			res = true;
+		}
+
+	}
+	else
+	{
+		if (!_bargeInSupported)
+		{
+			ResumeKws();
+		}
+	}
+	//if (!msg.empty())
+	//{
+	//	if (msg.find("[Timer]") != std::string::npos)
+	//	{
+	//		while (_player->GetState() != AudioPlayer::AudioPlayerState::PAUSED)
+	//		{
+	//			std::this_thread::sleep_for(std::chrono::milliseconds(30));
+	//		}
+	//	}
+	//	log_t("activity[\"text\"]: ", msg);
+	//}
+	return res;
+}
+
 void DialogManager::sendTextMsg(string user_text)
 {
-	while (_player->GetState() != AudioPlayer::AudioPlayerState::PAUSED)
+	if (GetDeviceStatus() == DeviceStatus::Listening || GetDeviceStatus() == DeviceStatus::Detecting)
 	{
-		std::this_thread::sleep_for(std::chrono::milliseconds(30));
+		log_t("PUSH a TEXT into buffer");
+		to_send.push_back(user_text);
+		return;
+	}
+		
+	while (GetDeviceStatus() != DeviceStatus::Idle && GetDeviceStatus() != DeviceStatus::Ready &&
+		GetDeviceStatus() != DeviceStatus::Speaking)
+	{
+		std::this_thread::sleep_for(std::chrono::milliseconds(20));
 	}
 
 	auto st = user_text.find("[msg2bot]");

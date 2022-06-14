@@ -43,6 +43,8 @@ enum class KeywordActivationState
 class DialogManager
 {
 public:
+    vector<string> to_send;
+    vector<ActivityReceivedEventArgs> to_play;
     DialogManager(shared_ptr<AgentConfiguration> agentConfig);
     DialogManager(shared_ptr<AgentConfiguration> agentConfig, string audioFilePath);
     const DeviceStatus GetDeviceStatus() { return _deviceStatus; };
@@ -63,6 +65,8 @@ public:
     bool IsMuted() { return _muter ? _muter->IsMuted() : false; };
     // Send text message to the bot
     void sendTextMsg(string user_text);
+    // play buffered audio by frontend and return whether listen again
+    bool playBufferedAudio(const ActivityReceivedEventArgs& event);
 private:
     bool _volumeOn = false;
     bool _bargeInSupported = false;
