@@ -123,6 +123,7 @@ void DialogManager::AttachHandlers()
 	_dialogServiceConnector->SessionStopped += [&](const SessionEventArgs& event)
 	{
 		printf("SESSION STOPPED: %s ...\n", event.SessionId.c_str());
+		auto rem = GetDeviceStatus();
 		SetDeviceStatus(DeviceStatus::Idle);
 		bool continue_listen = false;
 		if (to_send.size() > 0 || to_play.size() > 0)
@@ -149,6 +150,10 @@ void DialogManager::AttachHandlers()
 				ContinueListening();
 			}
 		}
+		//if (!continue_listen)
+		//{
+		//	SetDeviceStatus(rem);
+		//}
 	};
 
 	// Signal for events containing intermediate recognition results.
@@ -206,6 +211,7 @@ void DialogManager::AttachHandlers()
 			
 		}
 		//update the device status
+		//if (!continue_listen)
 		SetDeviceStatus(newStatus);
 	};
 
